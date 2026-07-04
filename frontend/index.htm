@@ -1,0 +1,830 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VAJRANET // AI Vulnerability Scanner v5.4</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --void:#0a0906;
+    --void-2:#0e0c08;
+    --panel:#131009;
+    --panel-2:#17130b;
+    --line:#2b2415;
+    --gold:#d4af37;
+    --gold-bright:#f2d271;
+    --gold-dim:#8a6f24;
+    --bronze:#a9793f;
+    --text:#ece6d6;
+    --red:#e2483d;
+    --orange:#e08a3c;
+    --amber:#e0b93c;
+    --ghost:#8a8168;
+  }
+  *{box-sizing:border-box;}
+  html,body{
+    background:var(--void);
+    color:var(--text);
+    font-family:'Inter',sans-serif;
+    margin:0;
+    overflow-x:hidden;
+  }
+  .font-display{font-family:'Space Grotesk',sans-serif; font-weight:600;}
+  .font-mono{font-family:'JetBrains Mono',monospace;}
+
+  /* ---------- Subtle drift grid background ---------- */
+  .grid-bg{
+    position:fixed; inset:0; z-index:0; pointer-events:none;
+    background-image:
+      linear-gradient(rgba(212,175,55,0.045) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(212,175,55,0.045) 1px, transparent 1px);
+    background-size:42px 42px;
+    animation:driftGrid 40s linear infinite;
+    mask-image:radial-gradient(ellipse 100% 90% at 50% 20%, black 40%, transparent 90%);
+  }
+  @keyframes driftGrid{
+    0%{background-position:0 0;}
+    100%{background-position:42px 84px;}
+  }
+  .vignette{
+    position:fixed; inset:0; z-index:0; pointer-events:none;
+    background:radial-gradient(ellipse 80% 60% at 50% 0%, rgba(212,175,55,0.05), transparent 60%),
+               radial-gradient(ellipse 60% 50% at 100% 100%, rgba(169,121,63,0.04), transparent 60%);
+  }
+  .scanline-overlay{
+    position:fixed; inset:0; z-index:1; pointer-events:none; opacity:0.15;
+    background:repeating-linear-gradient(0deg, rgba(0,0,0,0) 0px, rgba(0,0,0,0) 2px, rgba(212,175,55,0.01) 3px, rgba(0,0,0,0) 4px);
+  }
+
+  /* top glow sweep during active scan */
+  .sweep-bar{
+    position:fixed; top:0; left:0; right:0; height:2px; z-index:50;
+    background:linear-gradient(90deg, transparent, var(--gold), var(--gold-bright), var(--gold), transparent);
+    box-shadow:0 0 12px 2px rgba(212,175,55,0.7), 0 0 30px 6px rgba(212,175,55,0.25);
+    transform:translateX(-100%);
+    display:none;
+  }
+  .sweep-bar.active{ display:block; animation:sweep 2.4s linear infinite; }
+  @keyframes sweep{
+    0%{transform:translateX(-100%);}
+    100%{transform:translateX(100%);}
+  }
+
+  /* panels */
+  .panel{
+    background:linear-gradient(180deg, var(--panel), var(--panel-2));
+    border:1px solid var(--line);
+    position:relative;
+    border-radius:3px;
+  }
+  .panel::before{
+    content:''; position:absolute; top:0; left:0; width:12px; height:12px;
+    border-top:1.5px solid var(--gold); border-left:1.5px solid var(--gold); opacity:0.55;
+  }
+  .panel::after{
+    content:''; position:absolute; bottom:0; right:0; width:12px; height:12px;
+    border-bottom:1.5px solid var(--gold); border-right:1.5px solid var(--gold); opacity:0.55;
+  }
+
+  .glow-text{ color:var(--gold-bright); text-shadow:0 0 14px rgba(212,175,55,0.35); }
+  .glow-text-cyan{ color:var(--bronze); text-shadow:0 0 14px rgba(169,121,63,0.3); }
+  .glow-text-red{ color:var(--red); text-shadow:0 0 10px rgba(226,72,61,0.35); }
+
+  input, select{
+    background:#0c0a06;
+    border:1px solid var(--line);
+    color:var(--text);
+    font-family:'JetBrains Mono',monospace;
+    border-radius:3px;
+  }
+  input:focus, select:focus{
+    outline:none;
+    border-color:var(--gold);
+    box-shadow:0 0 0 1px var(--gold), 0 0 14px rgba(212,175,55,0.2);
+  }
+  input::placeholder{ color:#4d4630; }
+
+  .btn-scan{
+    background:linear-gradient(180deg, #2b2310, #191307);
+    border:1px solid var(--gold);
+    color:var(--gold-bright);
+    box-shadow:inset 0 0 20px rgba(212,175,55,0.05);
+    transition:all .25s ease;
+    position:relative;
+    overflow:hidden;
+    border-radius:3px;
+  }
+  .btn-scan:hover:not(:disabled){
+    box-shadow:0 0 25px rgba(212,175,55,0.4), inset 0 0 30px rgba(212,175,55,0.12);
+    transform:translateY(-1px);
+  }
+  .btn-scan:active:not(:disabled){ transform:translateY(0px); }
+  .btn-scan:disabled{ opacity:0.5; cursor:not-allowed; }
+  .btn-scan .shine{
+    position:absolute; top:0; left:-60%; width:40%; height:100%;
+    background:linear-gradient(120deg, transparent, rgba(255,255,255,0.10), transparent);
+    transform:skewX(-20deg);
+  }
+  .btn-scan.scanning .shine{ animation:shine 1.6s ease-in-out infinite; }
+  @keyframes shine{
+    0%{left:-60%;} 100%{left:130%;}
+  }
+
+  .pill{
+    font-size:10px; letter-spacing:0.06em; padding:3px 9px; border-radius:3px;
+    border:1px solid var(--line); font-family:'Space Grotesk',sans-serif; font-weight:500;
+  }
+  .pill-on{ border-color:var(--gold); color:var(--gold-bright); box-shadow:0 0 8px rgba(212,175,55,0.25); }
+  .pill-off{ border-color:var(--line); color:var(--ghost); }
+  .pill-warn{ border-color:var(--orange); color:var(--orange); box-shadow:0 0 8px rgba(224,138,60,0.25); }
+  .pill-danger{ border-color:var(--red); color:var(--red); box-shadow:0 0 8px rgba(226,72,61,0.25); }
+
+  ::-webkit-scrollbar{ width:8px; height:8px; }
+  ::-webkit-scrollbar-track{ background:var(--void-2); }
+  ::-webkit-scrollbar-thumb{ background:var(--gold-dim); border-radius:0; }
+  ::-webkit-scrollbar-thumb:hover{ background:var(--gold); }
+
+  /* stage rail */
+  .stage-node{
+    border:1px solid var(--line); background:var(--void-2);
+    transition:all .3s ease;
+    border-radius:3px;
+  }
+  .stage-node.pending{ color:var(--ghost); }
+  .stage-node.active{
+    border-color:var(--bronze); color:var(--gold-bright);
+    box-shadow:0 0 14px rgba(169,121,63,0.3);
+    animation:pulseNode 1.6s ease-in-out infinite;
+  }
+  .stage-node.done{ border-color:var(--gold); color:var(--gold); background:rgba(212,175,55,0.06); }
+  @keyframes pulseNode{
+    0%,100%{ box-shadow:0 0 8px rgba(169,121,63,0.2); }
+    50%{ box-shadow:0 0 18px rgba(169,121,63,0.4); }
+  }
+
+  /* risk gauge */
+  .gauge-ring{ transition:stroke-dashoffset 1.2s cubic-bezier(.4,0,.2,1), stroke .4s ease; }
+
+  /* score bars */
+  .bar-fill{ transition:width 1s cubic-bezier(.4,0,.2,1); }
+
+  /* blinking cursor */
+  .cursor-blink::after{
+    content:'▋'; animation:blink 1s steps(2) infinite; margin-left:2px; color:var(--gold);
+  }
+  @keyframes blink{ 50%{ opacity:0; } }
+
+  /* fade in rows */
+  @keyframes rowIn{
+    from{ opacity:0; transform:translateY(4px); }
+    to{ opacity:1; transform:translateY(0); }
+  }
+  .row-in{ animation:rowIn .35s ease both; }
+
+  .sev-critical{ color:var(--red); border-color:var(--red); }
+  .sev-high{ color:var(--orange); border-color:var(--orange); }
+  .sev-medium{ color:var(--amber); border-color:var(--amber); }
+  .sev-low{ color:var(--bronze); border-color:var(--bronze); }
+  .sev-info{ color:var(--ghost); border-color:var(--line); }
+
+  .tab-btn{ color:var(--ghost); border-bottom:2px solid transparent; font-family:'Space Grotesk',sans-serif; font-weight:500; }
+  .tab-btn.active{ color:var(--gold-bright); border-bottom:2px solid var(--gold); }
+
+  .badge{
+    font-size:9px; letter-spacing:0.05em; padding:2px 6px; font-family:'Space Grotesk',sans-serif; font-weight:500;
+  }
+
+  #reportFrame{ background:#100d07; }
+
+  @media (max-width: 1024px){
+    .desktop-only-note{ display:block; }
+  }
+</style>
+</head>
+<body class="min-h-screen">
+
+<div class="grid-bg"></div>
+<div class="vignette"></div>
+<div class="scanline-overlay"></div>
+<div id="sweepBar" class="sweep-bar"></div>
+
+<div class="relative z-10 min-h-screen flex flex-col">
+
+  <!-- ============ TOP BAR ============ -->
+  <header class="border-b border-[var(--line)] bg-[var(--void-2)]/90 backdrop-blur-sm sticky top-0 z-40">
+    <div class="max-w-[1800px] mx-auto px-4 py-2.5 flex items-center justify-between gap-4 flex-wrap">
+      <div class="flex items-center gap-3">
+        <span class="font-display text-2xl glow-text tracking-wide">VAJRANET</span>
+        <span class="pill pill-off font-display">v5.4</span>
+        <span class="hidden md:inline text-[10px] text-[var(--ghost)] font-mono tracking-wide">AI VULNERABILITY SCANNER</span>
+      </div>
+      <div class="flex items-center gap-2 flex-wrap">
+        <span id="pillGpu" class="pill pill-off">GPU</span>
+        <span id="pillCluster" class="pill pill-off">CLUSTER-404</span>
+        <span id="pillWaf" class="pill pill-off">WAF</span>
+        <span id="pillAuth" class="pill pill-off">AUTH</span>
+        <span id="pillConn" class="pill pill-danger">● OFFLINE</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- ============ BACKEND CONFIG BAR ============ -->
+  <div class="border-b border-[var(--line)] bg-[var(--void)]/80">
+    <div class="max-w-[1800px] mx-auto px-4 py-2 flex items-center gap-3 flex-wrap text-xs font-mono">
+      <span class="text-[var(--ghost)] font-display">BACKEND:</span>
+      <button id="modeLocal" class="pill pill-on" onclick="setMode('local')">LOCALHOST:8080</button>
+      <button id="modeTunnel" class="pill pill-off" onclick="setMode('tunnel')">CLOUDFLARED TUNNEL</button>
+      <input id="tunnelUrl" type="text" placeholder="https://your-tunnel.trycloudflare.com" class="hidden flex-1 min-w-[220px] max-w-md px-2 py-1 text-xs rounded-sm" oninput="saveTunnel()">
+      <button onclick="testConnection()" class="pill pill-off hover:pill-on ml-auto">↻ TEST CONNECTION</button>
+      <span id="backendLabel" class="text-[var(--ghost)] truncate">http://localhost:8080</span>
+    </div>
+  </div>
+
+  <!-- ============ MAIN LAYOUT ============ -->
+  <div class="flex-1 max-w-[1800px] w-full mx-auto p-4 grid grid-cols-1 xl:grid-cols-[300px_1fr_420px] gap-4">
+
+    <!-- ===== LEFT SIDEBAR ===== -->
+    <aside class="panel p-4 flex flex-col gap-5 h-fit xl:sticky xl:top-[92px]">
+      <div>
+        <h2 class="font-display text-sm glow-text tracking-wide mb-3">TARGET</h2>
+        <label class="text-[10px] text-[var(--ghost)] font-mono block mb-1">TARGET URL</label>
+        <input id="targetUrl" type="text" placeholder="https://target.example.com" class="w-full px-3 py-2 text-sm">
+      </div>
+
+      <div>
+        <h2 class="font-display text-sm glow-text tracking-wide mb-3">AUTH CONFIG</h2>
+        <label class="text-[10px] text-[var(--ghost)] font-mono block mb-1">AUTH TYPE</label>
+        <select id="authType" class="w-full px-3 py-2 text-sm mb-3" onchange="renderAuthFields()">
+          <option value="none">NONE</option>
+          <option value="bearer">BEARER TOKEN</option>
+          <option value="basic">BASIC AUTH</option>
+          <option value="cookie">COOKIE</option>
+          <option value="header">CUSTOM HEADER</option>
+        </select>
+        <div id="authFields" class="flex flex-col gap-2"></div>
+      </div>
+
+      <div>
+        <h2 class="font-display text-sm glow-text tracking-wide mb-3">SCAN SCOPE</h2>
+        <p class="text-[10px] leading-relaxed text-[var(--ghost)] font-mono">
+          Every scan runs the full v5.4 pipeline server-side: header analysis,
+          crawler + asset discovery, SSL/TLS, Nmap port sweep, cluster-based
+          soft-404 filtered path discovery, SQLi/XSS injection, Nuclei and
+          ZAP (if installed), then an on-GPU LLM report.
+        </p>
+      </div>
+
+      <button id="scanBtn" onclick="startScan()" class="btn-scan font-display text-base tracking-wide py-3.5 relative">
+        <span class="shine"></span>
+        <span id="scanBtnLabel">▶ INITIATE FULL SCAN</span>
+      </button>
+      <p id="scanError" class="hidden text-[11px] text-[var(--red)] glow-text-red font-mono"></p>
+    </aside>
+
+    <!-- ===== CENTER MAIN ===== -->
+    <main class="flex flex-col gap-4">
+
+      <!-- Stage rail -->
+      <div class="panel p-4">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="font-display text-sm glow-text tracking-wide">SCAN PIPELINE</h2>
+          <span id="scanIdLabel" class="text-[10px] text-[var(--ghost)] font-mono"></span>
+        </div>
+        <div id="stageRail" class="grid grid-cols-3 sm:grid-cols-9 gap-2 text-[10px] font-mono"></div>
+        <div class="mt-3 h-1.5 w-full bg-[var(--void-2)] border border-[var(--line)] overflow-hidden rounded-sm">
+          <div id="overallBar" class="bar-fill h-full" style="width:0%; background:linear-gradient(90deg, var(--gold-dim), var(--gold-bright));"></div>
+        </div>
+        <p id="statusLine" class="mt-2 text-xs text-[var(--bronze)] cursor-blink font-mono"></p>
+      </div>
+
+      <!-- Stats -->
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div class="panel p-3 text-center">
+          <div class="text-[10px] text-[var(--ghost)] font-mono">CRITICAL</div>
+          <div id="statCritical" class="text-3xl font-display glow-text-red text-[var(--red)]">0</div>
+        </div>
+        <div class="panel p-3 text-center">
+          <div class="text-[10px] text-[var(--ghost)] font-mono">HIGH</div>
+          <div id="statHigh" class="text-3xl font-display text-[var(--orange)]" style="text-shadow:0 0 8px rgba(224,138,60,0.4)">0</div>
+        </div>
+        <div class="panel p-3 text-center">
+          <div class="text-[10px] text-[var(--ghost)] font-mono">MEDIUM</div>
+          <div id="statMedium" class="text-3xl font-display text-[var(--amber)]" style="text-shadow:0 0 8px rgba(224,185,60,0.4)">0</div>
+        </div>
+        <div class="panel p-3 text-center">
+          <div class="text-[10px] text-[var(--ghost)] font-mono">FINDINGS</div>
+          <div id="statTotal" class="text-3xl font-display glow-text">0</div>
+        </div>
+      </div>
+
+      <!-- Risk score gauge + flags -->
+      <div class="panel p-4 flex flex-col sm:flex-row items-center gap-6">
+        <div class="relative w-32 h-32 shrink-0">
+          <svg viewBox="0 0 120 120" class="w-32 h-32 -rotate-90">
+            <circle cx="60" cy="60" r="52" fill="none" stroke="#2b2415" stroke-width="10"/>
+            <circle id="gaugeRing" class="gauge-ring" cx="60" cy="60" r="52" fill="none" stroke="#d4af37" stroke-width="10" stroke-linecap="round" stroke-dasharray="326.7" stroke-dashoffset="326.7"/>
+          </svg>
+          <div class="absolute inset-0 flex flex-col items-center justify-center">
+            <span id="riskScoreVal" class="text-2xl font-display glow-text">0</span>
+            <span class="text-[9px] text-[var(--ghost)] font-mono">RISK SCORE</span>
+          </div>
+        </div>
+        <div class="flex-1 grid grid-cols-2 sm:grid-cols-4 gap-2 w-full">
+          <div id="flagSqli" class="pill pill-off text-center py-2">SQLi</div>
+          <div id="flagXss" class="pill pill-off text-center py-2">XSS</div>
+          <div id="flagWaf" class="pill pill-off text-center py-2">WAF DETECTED</div>
+          <div id="flagCluster" class="pill pill-off text-center py-2">CLUSTER 404</div>
+        </div>
+      </div>
+
+      <!-- Terminal log -->
+      <div class="panel p-4 flex-1 min-h-[220px]">
+        <h2 class="font-display text-sm glow-text tracking-wide mb-2">LIVE TERMINAL</h2>
+        <div id="terminalLog" class="font-mono text-[11px] leading-relaxed h-56 overflow-y-auto space-y-1 pr-1">
+          <div class="text-[var(--ghost)]">[ SYSTEM ] awaiting target acquisition...</div>
+        </div>
+      </div>
+    </main>
+
+    <!-- ===== RIGHT PANEL ===== -->
+    <aside class="panel p-4 flex flex-col gap-3 xl:sticky xl:top-[92px] xl:h-[calc(100vh-108px)]">
+      <div class="flex items-center justify-between">
+        <h2 class="font-display text-sm glow-text-cyan tracking-wide">REPORT</h2>
+        <div class="flex gap-2">
+          <button onclick="downloadReport('txt')" class="pill pill-off hover:pill-on">↓ TXT</button>
+          <button onclick="downloadReport('html')" class="pill pill-off hover:pill-on">↓ HTML</button>
+        </div>
+      </div>
+
+      <div class="flex gap-4 text-xs border-b border-[var(--line)]">
+        <button class="tab-btn active pb-2" data-tab="findings" onclick="switchTab('findings')">FINDINGS</button>
+        <button class="tab-btn pb-2" data-tab="preview" onclick="switchTab('preview')">HTML PREVIEW</button>
+      </div>
+
+      <div id="tabFindings" class="flex-1 overflow-y-auto flex flex-col gap-2">
+        <div class="flex gap-2 text-[10px] mb-1">
+          <button class="pill pill-on" data-filter="all" onclick="setFilter('all')">ALL</button>
+          <button class="pill pill-off" data-filter="critical" onclick="setFilter('critical')">CRITICAL</button>
+          <button class="pill pill-off" data-filter="high" onclick="setFilter('high')">HIGH</button>
+          <button class="pill pill-off" data-filter="other" onclick="setFilter('other')">MED / LOW</button>
+        </div>
+        <div id="findingsList" class="flex flex-col gap-2">
+          <p class="text-[var(--ghost)] text-xs italic font-mono">No findings yet. Run a scan to populate this panel.</p>
+        </div>
+      </div>
+
+      <div id="tabPreview" class="hidden flex-1">
+        <iframe id="reportFrame" class="w-full h-full border border-[var(--line)] rounded-sm" srcdoc="<body style='background:#100d07;color:#8a8168;font-family:monospace;padding:20px;'>No HTML report loaded yet.</body>"></iframe>
+      </div>
+    </aside>
+  </div>
+
+  <footer class="border-t border-[var(--line)] py-3 text-center text-[10px] text-[var(--ghost)] font-mono">
+    VAJRANET AI VULNERABILITY SCANNER v5.4 &nbsp;·&nbsp; UNAUTHORIZED SCANNING OF SYSTEMS YOU DO NOT OWN IS ILLEGAL &nbsp;·&nbsp; USE RESPONSIBLY
+  </footer>
+</div>
+
+<script>
+/* ============================================================
+   VAJRANET FRONTEND CONTROLLER
+   Wired directly to the v5.4 Python backend:
+     POST /start-scan   { url, auth_config }        -> { scan_id }
+     GET  /status?id=    -> { status, stage(1-9), stage_name, report,
+                               stats{critical,high,medium,low,score},
+                               sqli_vuln, xss_vuln, waf_blocked,
+                               soft404_available, cluster_size,
+                               findings_count, crawl_stats, auth_used,
+                               confidence_summary, error }
+     GET  /download?id=       -> raw .txt report
+     GET  /download-html?id=  -> raw .html report (also holds the
+                                  structured findings blocks we parse
+                                  for the FINDINGS tab, since /status
+                                  does not expose findings as JSON)
+   ============================================================ */
+
+const STAGES = [
+  "HTTP+HDRS", "CRAWL", "SSL/TLS", "PORTS+NMAP", "PATHS-404",
+  "SQLi/XSS", "AI REPORT", "BUILD DOC", "FINALIZE"
+];
+
+let state = {
+  mode: 'local',
+  tunnelUrl: '',
+  scanning: false,
+  scanId: null,
+  pollTimer: null,
+  findings: [],
+  filter: 'all',
+};
+
+function backendBase(){
+  if(state.mode === 'tunnel' && state.tunnelUrl.trim()){
+    return state.tunnelUrl.trim().replace(/\/$/, '');
+  }
+  return 'http://localhost:8080';
+}
+
+function setMode(mode){
+  state.mode = mode;
+  document.getElementById('modeLocal').className = 'pill ' + (mode==='local' ? 'pill-on':'pill-off');
+  document.getElementById('modeTunnel').className = 'pill ' + (mode==='tunnel' ? 'pill-on':'pill-off');
+  document.getElementById('tunnelUrl').classList.toggle('hidden', mode !== 'tunnel');
+  document.getElementById('backendLabel').textContent = backendBase();
+  testConnection();
+}
+function saveTunnel(){
+  state.tunnelUrl = document.getElementById('tunnelUrl').value;
+  document.getElementById('backendLabel').textContent = backendBase();
+}
+
+/* ---------- Auth fields (keys match build_auth_headers() in backend) ---------- */
+function renderAuthFields(){
+  const type = document.getElementById('authType').value;
+  const box = document.getElementById('authFields');
+  box.innerHTML = '';
+  const mk = (label, id, placeholder) => `
+    <div>
+      <label class="text-[10px] text-[var(--ghost)] font-mono block mb-1">${label}</label>
+      <input id="${id}" type="text" placeholder="${placeholder}" class="w-full px-3 py-2 text-xs">
+    </div>`;
+  if(type === 'bearer'){
+    box.innerHTML = mk('BEARER TOKEN', 'authBearer', 'eyJhbGciOi...');
+  } else if(type === 'basic'){
+    box.innerHTML = mk('USERNAME', 'authUser', 'admin') + mk('PASSWORD', 'authPass', '••••••••');
+  } else if(type === 'cookie'){
+    box.innerHTML = mk('COOKIE STRING', 'authCookie', 'session=abc123; token=xyz');
+  } else if(type === 'header'){
+    box.innerHTML = mk('HEADER NAME', 'authHeaderName', 'X-API-Key') + mk('HEADER VALUE', 'authHeaderVal', 'secret-value');
+  }
+}
+function buildAuthConfig(){
+  const type = document.getElementById('authType').value;
+  if(type === 'none') return null;
+  if(type === 'bearer') return { type:'bearer', token: val('authBearer') };
+  if(type === 'basic') return { type:'basic', username: val('authUser'), password: val('authPass') };
+  if(type === 'cookie') return { type:'cookie', cookie: val('authCookie') };
+  if(type === 'header') return { type:'header', header_name: val('authHeaderName'), header_value: val('authHeaderVal') };
+  return null;
+}
+function val(id){ const el = document.getElementById(id); return el ? el.value : ''; }
+renderAuthFields();
+
+/* ---------- Terminal log ---------- */
+function logLine(text, cls){
+  const box = document.getElementById('terminalLog');
+  const div = document.createElement('div');
+  div.className = 'row-in ' + (cls || 'text-[var(--gold)]');
+  const ts = new Date().toLocaleTimeString('en-US', {hour12:false});
+  div.textContent = `[${ts}] ${text}`;
+  box.appendChild(div);
+  box.scrollTop = box.scrollHeight;
+}
+
+/* ---------- Connection test ---------- */
+async function testConnection(){
+  document.getElementById('backendLabel').textContent = backendBase();
+  logLine('Testing connection to ' + backendBase() + ' ...', 'text-[var(--bronze)]');
+  try{
+    const res = await fetch(backendBase() + '/status?id=__ping__', { method:'GET' });
+    setConnPill(true);
+    document.getElementById('pillGpu').className = 'pill pill-on';
+    document.getElementById('pillGpu').textContent = 'GPU';
+    logLine('Backend reachable (HTTP ' + res.status + ')', 'text-[var(--gold)]');
+  }catch(e){
+    setConnPill(false);
+    document.getElementById('pillGpu').className = 'pill pill-off';
+    logLine('Connection failed: ' + e.message, 'text-[var(--red)]');
+  }
+}
+function setConnPill(ok){
+  const p = document.getElementById('pillConn');
+  if(ok){ p.className = 'pill pill-on'; p.textContent = '● ONLINE'; }
+  else{ p.className = 'pill pill-danger'; p.textContent = '● OFFLINE'; }
+}
+
+/* ---------- Stage rail render (backend stage is 1-9) ---------- */
+function renderStages(activeIdx){
+  const rail = document.getElementById('stageRail');
+  rail.innerHTML = STAGES.map((s, i) => {
+    let cls = 'pending';
+    if(i < activeIdx) cls = 'done';
+    else if(i === activeIdx) cls = 'active';
+    return `<div class="stage-node ${cls} px-2 py-2 text-center">
+      <div>${String(i+1).padStart(2,'0')}</div>
+      <div class="truncate">${s}</div>
+    </div>`;
+  }).join('');
+}
+renderStages(-1);
+
+/* ---------- Start scan ---------- */
+async function startScan(){
+  const url = document.getElementById('targetUrl').value.trim();
+  const errEl = document.getElementById('scanError');
+  errEl.classList.add('hidden');
+
+  if(!url){
+    errEl.textContent = 'ERROR: target URL is required.';
+    errEl.classList.remove('hidden');
+    return;
+  }
+
+  const btn = document.getElementById('scanBtn');
+  const label = document.getElementById('scanBtnLabel');
+  btn.disabled = true;
+  btn.classList.add('scanning');
+  label.textContent = '◉ SCAN IN PROGRESS...';
+  document.getElementById('sweepBar').classList.add('active');
+  state.scanning = true;
+  state.findings = [];
+  renderFindings();
+  resetStats();
+  renderStages(0);
+  document.getElementById('reportFrame').srcdoc =
+    "<body style='background:#100d07;color:#8a8168;font-family:monospace;padding:20px;'>Scan running — HTML preview will load on completion.</body>";
+  logLine('Initiating full scan against ' + url, 'text-[var(--bronze)]');
+
+  const authConfig = buildAuthConfig();
+  const payload = { url, auth_config: authConfig };
+
+  try{
+    const res = await fetch(backendBase() + '/start-scan', {
+      method:'POST',
+      headers:{ 'Content-Type':'application/json' },
+      body: JSON.stringify(payload)
+    });
+    if(!res.ok){
+      let msg = 'HTTP ' + res.status;
+      try{ const j = await res.json(); if(j.error) msg = j.error; }catch(_){}
+      throw new Error(msg);
+    }
+    const data = await res.json();
+    state.scanId = data.scan_id;
+    if(!state.scanId) throw new Error('No scan_id returned by backend');
+    document.getElementById('scanIdLabel').textContent = 'ID: ' + state.scanId;
+    setConnPill(true);
+    logLine('Scan accepted — ID ' + state.scanId, 'text-[var(--gold)]');
+    pollStatus();
+  }catch(e){
+    setConnPill(false);
+    errEl.textContent = 'ERROR: could not start scan — ' + e.message;
+    errEl.classList.remove('hidden');
+    logLine('Failed to start scan: ' + e.message, 'text-[var(--red)]');
+    endScanUI(false);
+  }
+}
+
+function resetStats(){
+  document.getElementById('statCritical').textContent = '0';
+  document.getElementById('statHigh').textContent = '0';
+  document.getElementById('statMedium').textContent = '0';
+  document.getElementById('statTotal').textContent = '0';
+  setGauge(0);
+  setFlag('flagSqli', false, 'SQLi');
+  setFlag('flagXss', false, 'XSS');
+  setFlag('flagWaf', false, 'WAF DETECTED');
+  setFlag('flagCluster', false, 'CLUSTER 404');
+  document.getElementById('pillWaf').className = 'pill pill-off';
+  document.getElementById('pillCluster').className = 'pill pill-off';
+  document.getElementById('pillAuth').className = 'pill pill-off';
+  document.getElementById('overallBar').style.width = '0%';
+}
+
+/* ---------- Poll /status ---------- */
+async function pollStatus(){
+  clearTimeout(state.pollTimer);
+  try{
+    const res = await fetch(backendBase() + '/status?id=' + encodeURIComponent(state.scanId));
+    if(!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    setConnPill(true);
+    applyStatus(data);
+
+    if(data.status === 'done'){
+      endScanUI(true, data);
+      return;
+    }
+    if(data.status === 'error'){
+      logLine('Scan error: ' + (data.error || 'unknown error'), 'text-[var(--red)]');
+      endScanUI(false);
+      return;
+    }
+  }catch(e){
+    setConnPill(false);
+    logLine('Polling error: ' + e.message, 'text-[var(--red)]');
+  }
+  state.pollTimer = setTimeout(pollStatus, 1500);
+}
+
+function applyStatus(data){
+  const stageIdx = (typeof data.stage === 'number' ? data.stage : 1) - 1;
+  renderStages(stageIdx);
+
+  const pct = Math.min(100, Math.round(((stageIdx+1)/STAGES.length)*100));
+  document.getElementById('overallBar').style.width = pct + '%';
+
+  const msg = data.stage_name || data.status || 'scanning...';
+  document.getElementById('statusLine').textContent = '> ' + msg;
+  logLine(msg, 'text-[var(--gold)]');
+
+  if(data.crawl_stats){
+    // surfaced in the terminal log rather than a dedicated widget
+  }
+
+  const s = data.stats || {};
+  document.getElementById('statCritical').textContent = s.critical ?? 0;
+  document.getElementById('statHigh').textContent = s.high ?? 0;
+  document.getElementById('statMedium').textContent = s.medium ?? 0;
+  document.getElementById('statTotal').textContent = data.findings_count ?? 0;
+  setGauge(s.score ?? data.risk_score ?? 0);
+
+  setFlag('flagSqli', !!data.sqli_vuln, 'SQLi');
+  setFlag('flagXss', !!data.xss_vuln, 'XSS');
+  setFlag('flagWaf', !!data.waf_blocked, 'WAF DETECTED');
+  setFlag('flagCluster', !!data.cluster_size, 'CLUSTER 404');
+
+  document.getElementById('pillWaf').className = 'pill ' + (data.waf_blocked ? 'pill-danger' : 'pill-off');
+  document.getElementById('pillCluster').className = 'pill ' + (data.cluster_size ? 'pill-warn' : (data.soft404_available ? 'pill-on' : 'pill-off'));
+  document.getElementById('pillAuth').className = 'pill ' + (data.auth_used ? 'pill-on' : 'pill-off');
+}
+
+function setFlag(id, on, label){
+  const el = document.getElementById(id);
+  el.className = 'pill text-center py-2 ' + (on ? 'pill-danger' : 'pill-off');
+  el.textContent = (on ? '⚠ ' : '') + label;
+}
+
+function setGauge(score){
+  score = Math.max(0, Math.min(100, score));
+  const ring = document.getElementById('gaugeRing');
+  const circumference = 326.7;
+  const offset = circumference - (score/100)*circumference;
+  ring.style.strokeDashoffset = offset;
+  let color = '#d4af37';
+  if(score <= 15) color = '#e2483d';
+  else if(score <= 40) color = '#e08a3c';
+  else if(score <= 70) color = '#e0b93c';
+  else color = '#4fae5c';
+  ring.style.stroke = color;
+  document.getElementById('riskScoreVal').textContent = Math.round(score);
+  document.getElementById('riskScoreVal').style.color = color;
+}
+
+async function endScanUI(success, data){
+  state.scanning = false;
+  clearTimeout(state.pollTimer);
+  const btn = document.getElementById('scanBtn');
+  const label = document.getElementById('scanBtnLabel');
+  btn.disabled = false;
+  btn.classList.remove('scanning');
+  label.textContent = '▶ INITIATE FULL SCAN';
+  document.getElementById('sweepBar').classList.remove('active');
+  if(success){
+    renderStages(STAGES.length);
+    document.getElementById('overallBar').style.width = '100%';
+    document.getElementById('statusLine').textContent = '> scan complete.';
+    logLine('Scan complete.', 'text-[var(--bronze)]');
+    await loadHtmlReport();
+  }
+}
+
+/* ---------- Findings + HTML preview (parsed from /download-html) ---------- */
+async function loadHtmlReport(){
+  if(!state.scanId) return;
+  try{
+    const res = await fetch(backendBase() + '/download-html?id=' + encodeURIComponent(state.scanId));
+    if(!res.ok) throw new Error('HTTP ' + res.status);
+    const html = await res.text();
+    document.getElementById('reportFrame').srcdoc = html;
+    state.findings = parseFindingsFromHtml(html);
+    renderFindings();
+    logLine(`Loaded report — ${state.findings.length} findings parsed.`, 'text-[var(--gold)]');
+  }catch(e){
+    logLine('Could not load HTML report: ' + e.message, 'text-[var(--orange)]');
+  }
+}
+
+function parseFindingsFromHtml(htmlStr){
+  const doc = new DOMParser().parseFromString(htmlStr, 'text/html');
+  const headers = Array.from(doc.querySelectorAll('h2'));
+  const findingsHeader = headers.find(h => h.textContent.trim().startsWith('FINDINGS'));
+  if(!findingsHeader) return [];
+  let node = findingsHeader.nextElementSibling;
+  const results = [];
+  while(node && node.tagName === 'DIV' && node.style && node.style.border){
+    const rows = node.children;
+    const headerRow = rows[0];
+    const spans = headerRow ? headerRow.querySelectorAll('span') : [];
+    const severity = spans[0] ? spans[0].textContent.replace(/[\[\]]/g, '').trim() : 'INFO';
+    const confidence = spans[1] ? spans[1].textContent.trim() : 'MEDIUM';
+    const id = spans[2] ? spans[2].textContent.trim() : '';
+    const title = spans[3] ? spans[3].textContent.trim() : 'Finding';
+    const owasp = rows[1] ? rows[1].textContent.trim() : '';
+    const evidenceDiv = rows[2];
+    const evidence = evidenceDiv ? evidenceDiv.textContent.replace(/^Evidence:\s*/, '').trim() : '';
+    const fixDiv = rows[3];
+    const fix = fixDiv ? fixDiv.textContent.replace(/^Fix:\s*/, '').trim() : '';
+    results.push({ severity, confidence, id, title, owasp, evidence, fix });
+    node = node.nextElementSibling;
+  }
+  return results;
+}
+
+/* ---------- Findings render ---------- */
+function setFilter(f){
+  state.filter = f;
+  document.querySelectorAll('[data-filter]').forEach(b => {
+    b.className = 'pill ' + (b.dataset.filter === f ? 'pill-on' : 'pill-off');
+  });
+  renderFindings();
+}
+
+function sevClass(sev){
+  sev = (sev||'').toLowerCase();
+  if(sev.includes('crit')) return 'sev-critical';
+  if(sev.includes('high')) return 'sev-high';
+  if(sev.includes('med')) return 'sev-medium';
+  if(sev.includes('low')) return 'sev-low';
+  return 'sev-info';
+}
+function confBadge(conf){
+  conf = (conf||'medium').toLowerCase();
+  if(conf.includes('high')) return '<span class="badge sev-critical border rounded-sm">HIGH CONFIDENCE</span>';
+  if(conf.includes('low')) return '<span class="badge sev-info border rounded-sm">LOW CONFIDENCE</span>';
+  return '<span class="badge sev-medium border rounded-sm">MEDIUM CONFIDENCE</span>';
+}
+
+function matchesFilter(f){
+  const sev = (f.severity||'').toLowerCase();
+  if(state.filter === 'all') return true;
+  if(state.filter === 'critical') return sev.includes('crit');
+  if(state.filter === 'high') return sev.includes('high');
+  if(state.filter === 'other') return !sev.includes('crit') && !sev.includes('high');
+  return true;
+}
+
+function renderFindings(){
+  const box = document.getElementById('findingsList');
+  const list = state.findings.filter(matchesFilter);
+  if(!list.length){
+    box.innerHTML = '<p class="text-[var(--ghost)] text-xs italic font-mono">No findings in this category yet.</p>';
+    return;
+  }
+  box.innerHTML = list.map(f => `
+    <div class="row-in border ${sevClass(f.severity)} bg-[var(--void-2)] p-3 rounded-sm">
+      <div class="flex items-center justify-between gap-2 flex-wrap mb-1">
+        <span class="font-display text-xs ${sevClass(f.severity)} uppercase tracking-wide">${escapeHtml(f.severity)} — ${escapeHtml(f.title)}</span>
+        <div class="flex gap-1">${confBadge(f.confidence)}</div>
+      </div>
+      <div class="text-[11px] text-[var(--ghost)] font-mono break-all">${escapeHtml(f.id)} &nbsp;·&nbsp; ${escapeHtml(f.owasp)}</div>
+      ${f.evidence ? `<div class="text-[11px] mt-1 text-[#c9c2ac]"><b class="text-[var(--amber)]">Evidence:</b> ${escapeHtml(f.evidence)}</div>` : ''}
+      ${f.fix ? `<div class="text-[11px] mt-1 text-[#9fb7c9]"><b class="text-[var(--bronze)]">Fix:</b> ${escapeHtml(f.fix)}</div>` : ''}
+    </div>
+  `).join('');
+}
+function escapeHtml(s){
+  const d = document.createElement('div');
+  d.textContent = s ?? '';
+  return d.innerHTML;
+}
+
+/* ---------- Tabs ---------- */
+function switchTab(tab){
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+  document.getElementById('tabFindings').classList.toggle('hidden', tab !== 'findings');
+  document.getElementById('tabPreview').classList.toggle('hidden', tab !== 'preview');
+}
+
+/* ---------- Downloads ---------- */
+async function downloadReport(kind){
+  if(!state.scanId){
+    logLine('No scan ID available — run a scan first.', 'text-[var(--orange)]');
+    return;
+  }
+  const path = kind === 'html' ? '/download-html' : '/download';
+  const url = backendBase() + path + '?id=' + encodeURIComponent(state.scanId);
+  try{
+    const res = await fetch(url);
+    if(!res.ok) throw new Error('HTTP ' + res.status);
+    const blob = await res.blob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `vajranet_report_${state.scanId}.${kind === 'html' ? 'html' : 'txt'}`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    logLine(`Downloaded ${kind.toUpperCase()} report.`, 'text-[var(--gold)]');
+  }catch(e){
+    logLine('Download failed: ' + e.message, 'text-[var(--red)]');
+  }
+}
+
+/* ---------- init ---------- */
+document.getElementById('backendLabel').textContent = backendBase();
+testConnection();
+</script>
+</body>
+</html>
