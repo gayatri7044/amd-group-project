@@ -19,7 +19,8 @@ from bs4 import BeautifulSoup, Comment
 warnings.filterwarnings('ignore')
 try:
     import urllib3; urllib3.disable_warnings()
-except: pass
+except OSError:
+        pass
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  CONFIG
@@ -611,7 +612,8 @@ def build_soft404_fingerprint(base, R):
                 sizes.add(len(pr.content))
                 hashes.add(hashlib.md5(pr.content).hexdigest())
                 ok_count += 1
-        except: pass
+        except OSError:
+        pass
 
     R['soft404_sizes']     = list(sizes)
     R['soft404_hashes']    = list(hashes)
@@ -681,7 +683,7 @@ def content_is_real(path, content_bytes):
     try:
         text     = content_bytes[:8000].decode('utf-8', errors='ignore')
         text_low = text.lower()
-    except:
+    except OSError:
         return True   # binary → accept
 
     is_html = ('<html' in text_low or '<!doctype' in text_low or
@@ -728,7 +730,7 @@ def verdict_real(path, content_bytes,
     # 3. No definitive content check — use heuristics
     try:
         text_low = content_bytes[:1000].decode('utf-8', errors='ignore').lower()
-    except:
+    except OSError:
         return True, 'binary — accepted'
 
     is_html = '<html' in text_low or '<!doctype' in text_low
@@ -777,7 +779,7 @@ def do_crawl(url, R, auth_headers=None):
     try:
         rp.set_url(f"{base_url}/robots.txt")
         rp.read()
-    except:
+    except OSError:
         rp = None
 
     print(f"     Crawler starting BFS max={MAX_CRAWL_PAGES} depth={MAX_CRAWL_DEPTH}",
@@ -796,7 +798,8 @@ def do_crawl(url, R, auth_headers=None):
             try:
                 if not rp.can_fetch('*', cur_url):
                     continue
-            except: pass
+            except OSError:
+        pass
 
         try:
             time.sleep(random.uniform(0.4, 0.9))
@@ -1001,8 +1004,8 @@ def do_http(url, R, auth_headers=None):
                 R['http_to_https']      = (hr.status_code in [301,302,308]
                                             if hr.status_code not in [403,429,503]
                                             else None)
-            except:
-                R['http_to_https'] = None
+            except OSError:
+        R['http_to_https'] = None
 
         if resp.status_code == 200 and len(resp.content) > 200:
             soup = BeautifulSoup(resp.text, 'html.parser')
@@ -1112,8 +1115,8 @@ def do_ssl(R):
             try:
                 days = (datetime.strptime(na,'%b %d %H:%M:%S %Y %Z') -
                         datetime.utcnow()).days
-            except:
-                days = -1
+            except OSError:
+        days = -1
             weak_p = proto in ['TLSv1','TLSv1.1','SSLv2','SSLv3']
             weak_c = any(w in (ciph[0] if ciph else '')
                          for w in ['RC4','DES','EXPORT','NULL','ANON','MD5'])
@@ -1174,7 +1177,8 @@ def do_ports(R):
                                 path=f":{port}", category='confirmed',
                                 fix=f'Firewall port {port} from public internet')
             s.close()
-        except: pass
+        except OSError:
+        pass
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1374,7 +1378,8 @@ def do_paths(url, R, auth_headers=None):
             if pr.status_code in [403, 429]:
                 block_sizes.add(len(pr.content))
                 block_hashes.add(hashlib.md5(pr.content).hexdigest())
-        except: pass
+        except OSError:
+        pass
 
     print(f"     WAF fp:    sizes={block_sizes} "
           f"hashes={[h[:8] for h in block_hashes]}", flush=True)
@@ -1411,7 +1416,8 @@ def do_paths(url, R, auth_headers=None):
                             'HIGH', owasp_key='dir_listing',
                             path=dpath, category='confirmed',
                             fix=f'Add "Options -Indexes" (Apache) or "autoindex off" (Nginx)')
-        except: pass
+        except OSError:
+        pass
 
     # ── Phase 1: collect raw probe results ───────────────────────────────
     raw_results = []   # store all probed entries for cluster analysis
@@ -1439,7 +1445,8 @@ def do_paths(url, R, auth_headers=None):
                 'severity': cat_sev,
                 'desc':     desc,
             })
-        except: pass
+        except OSError:
+        pass
 
     # ── FIX #1: cluster-based soft-404 auto-detection ────────────────────
     cluster_size = detect_soft404_cluster(raw_results)
@@ -1527,7 +1534,8 @@ def do_paths(url, R, auth_headers=None):
                     'reason': 'redirect', 'real': False,
                     'confidence': 'LOW',
                 })
-        except: pass
+        except OSError:
+        pass
 
     R['real_exposed'] = real
 
@@ -1546,7 +1554,8 @@ def do_paths(url, R, auth_headers=None):
                 else:
                     R['sitemap_urls'] = re.findall(
                         r'<loc>(.*?)</loc>', r.text)[:15]
-        except: pass
+        except OSError:
+        pass
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1578,7 +1587,8 @@ def do_sqli(url, R, auth_headers=None):
                     test_url, timeout=8, verify=False)
                 blen = len(br.text)
                 blow = br.text.lower()
-            except: continue
+            except OSError:
+        continue
             for pname, payload, ptype in SQL_PAYLOADS:
                 try:
                     tp = dict(params); tp[param] = [payload]
@@ -1622,7 +1632,8 @@ def do_sqli(url, R, auth_headers=None):
                                     category='confirmed',
                                     fix='Use parameterized queries / prepared statements')
                         break
-                except: pass
+                except OSError:
+        pass
     R['sqli'] = {'tested': tested, 'results': results,
                  'vulnerable': bool(results)}
 
@@ -1670,7 +1681,8 @@ def do_xss(url, R, auth_headers=None):
                                     category='confirmed',
                                     fix='Encode all user output. Implement strict CSP.')
                         break
-                except: pass
+                except OSError:
+        pass
     R['xss'] = {'results': results, 'vulnerable': bool(results)}
 
 
@@ -1702,7 +1714,8 @@ def do_methods(url, R):
                             f'Server responded HTTP {rr.status_code} to {method}',
                             'HIGH', owasp_key=okey, category='confirmed',
                             fix=f'Disable {method} in server config')
-        except: pass
+        except OSError:
+        pass
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1718,7 +1731,8 @@ def do_subs(R):
             socket.setdefaulttimeout(1.2)
             ip = socket.gethostbyname(fqdn)
             found.append({'subdomain': fqdn, 'ip': ip})
-        except: pass
+        except OSError:
+        pass
 
     R['subdomains'] = [x['subdomain'] for x in found]
     R['asset_discovery']['subdomains_full'] = found
@@ -1734,8 +1748,8 @@ def do_subs(R):
                 if any(kw.lower() in combined for kw in kws):
                     tech.add(name)
             entry['technologies'] = sorted(tech)
-        except:
-            entry['technologies'] = []
+        except OSError:
+        entry['technologies'] = []
 
     R['asset_discovery']['technologies'] = sorted(R['technologies'])
 
